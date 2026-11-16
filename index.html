@@ -1,0 +1,1021 @@
+<title>Postilion Console API</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/*
+ * Plan, in the tokens below.
+ *
+ * Subject: the HTTP API of the ACI Postilion operator console, a payment
+ * switch's configuration surface. Its world is the payment operations
+ * desk: instrument panels, terminal screens, a machine that answers on a
+ * port and tells you what it found.
+ *
+ * Layout: a single measure of running text, with a persistent contents
+ * rail on wide screens. The reference is read, not scanned, so the page
+ * has one column of prose and the tables are the only things that widen.
+ *
+ * Type: IBM Plex Sans for prose and headings (a technical instrument
+ * face, and the console's own voice is machine-adjacent rather than
+ * marketing), IBM Plex Mono for every path, parameter, status code and
+ * code block, because the subject is full of things that must be copied
+ * exactly.
+ *
+ * Palette: the console's own tokens, dark first, because the console is
+ * an operator terminal and this is its documentation.
+ */
+:root {
+  color-scheme: dark;
+
+  --bg:          #12161c;
+  --bg-raised:   #1a1f27;
+  --bg-sunken:   #0d1014;
+  --bg-input:    #10141a;
+  --bg-hover:    #232a34;
+  --border:      #2c3440;
+  --border-str:  #3d4756;
+  --fg:          #e6ebf2;
+  --fg-muted:    #9aa7b8;
+  --fg-faint:    #6f7d8f;
+  --accent:      #4da3ff;
+  --accent-ink:  #06121f;
+  --accent-dim:  #1d3f5e;
+  --accent-ink2: #dceaff;
+  --ok:          #4ec9a0;
+  --warn:        #e0b341;
+  --bad:         #ff7b72;
+  --ok-border:   #2c5b4b;
+  --warn-border: #5c4d20;
+  --bad-border:  #6b2f2c;
+  --focus:       #ffd866;
+  --shadow-pop:  0 10px 30px rgba(0, 0, 0, 0.55);
+
+  --sans: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --radius-ctl: 4px;
+  --radius-panel: 8px;
+  --radius-chip: 3px;
+}
+
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    color-scheme: light;
+    --bg:          #f4f6f9;
+    --bg-raised:   #ffffff;
+    --bg-sunken:   #eaeef3;
+    --bg-input:    #ffffff;
+    --bg-hover:    #e8edf4;
+    --border:      #d3dae2;
+    --border-str:  #b9c4cf;
+    --fg:          #1b2530;
+    --fg-muted:    #5c6774;
+    --fg-faint:    #8b95a1;
+    --accent:      #0b5fbe;
+    --accent-ink:  #ffffff;
+    --accent-dim:  #e3edfb;
+    --accent-ink2: #123c74;
+    --ok:          #177a4b;
+    --warn:        #8a6100;
+    --bad:         #b3261e;
+    --ok-border:   #a7cfba;
+    --warn-border: #d9c48e;
+    --bad-border:  #e6b3ae;
+    --focus:       #0b5fbe;
+    --shadow-pop:  0 10px 30px rgba(15, 30, 50, 0.18);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg:          #f4f6f9;
+  --bg-raised:   #ffffff;
+  --bg-sunken:   #eaeef3;
+  --bg-input:    #ffffff;
+  --bg-hover:    #e8edf4;
+  --border:      #d3dae2;
+  --border-str:  #b9c4cf;
+  --fg:          #1b2530;
+  --fg-muted:    #5c6774;
+  --fg-faint:    #8b95a1;
+  --accent:      #0b5fbe;
+  --accent-ink:  #ffffff;
+  --accent-dim:  #e3edfb;
+  --accent-ink2: #123c74;
+  --ok:          #177a4b;
+  --warn:        #8a6100;
+  --bad:         #b3261e;
+  --ok-border:   #a7cfba;
+  --warn-border: #d9c48e;
+  --bad-border:  #e6b3ae;
+  --focus:       #0b5fbe;
+  --shadow-pop:  0 10px 30px rgba(15, 30, 50, 0.18);
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0 4rem;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0 0 auto;
+  height: env(safe-area-inset-top, 0px);
+  z-index: 10;
+  background: var(--bg);
+}
+
+.wrap {
+  max-width: 78rem;
+  margin: 0 auto;
+  padding-inline: clamp(16px, 4vw, 40px);
+}
+
+a { color: var(--accent); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+a:hover { color: var(--fg); }
+
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+
+code, pre, .mono { font-family: var(--mono); }
+
+/* ------------------------------------------------------------ masthead */
+.masthead {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+  padding-block: 1.6rem 1.4rem;
+}
+.brand { display: flex; align-items: center; gap: 10px; }
+.brand-mark {
+  font-weight: 700; font-size: 11px; letter-spacing: 0.08em;
+  background: var(--accent-dim); color: var(--accent-ink2);
+  border: 1px solid var(--accent); border-radius: var(--radius-chip);
+  padding: 2px 6px;
+}
+.brand-text { font-weight: 600; font-size: 14px; letter-spacing: 0.01em; }
+.masthead h1 {
+  font-size: clamp(1.7rem, 4.4vw, 2.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  margin: 1.1rem 0 0.5rem;
+  text-wrap: balance;
+}
+.standfirst {
+  margin: 0 0 1.2rem;
+  color: var(--fg-muted);
+  max-width: 62ch;
+  font-size: 1.02rem;
+}
+.linkrow {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 0; margin: 0; list-style: none;
+}
+.linkrow a {
+  display: inline-block;
+  font-family: var(--mono); font-size: 12.5px;
+  background: var(--bg-sunken); border: 1px solid var(--border);
+  border-radius: var(--radius-ctl); padding: 4px 9px;
+  color: var(--accent); text-decoration: none;
+  transition: border-color 80ms ease, color 80ms ease;
+}
+.linkrow a:hover { border-color: var(--accent); color: var(--accent); }
+.vpn-note {
+  margin: 1.1rem 0 0;
+  font-size: 13px;
+  color: var(--fg-muted);
+  border-left: 2px solid var(--border-str);
+  padding-left: 0.8rem;
+  max-width: 68ch;
+}
+
+/* ---------------------------------------------------------------- body */
+.doc {
+  display: grid;
+  grid-template-columns: 15rem minmax(0, 1fr);
+  gap: clamp(1.5rem, 4vw, 3.5rem);
+  padding-top: 2.2rem;
+}
+.toc {
+  align-self: start;
+  position: sticky;
+  top: 1.5rem;
+  font-size: 13px;
+}
+.toc h2 {
+  font-size: 11px; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--fg-muted); margin: 0 0 0.6rem; font-weight: 600;
+}
+.toc ol { list-style: none; margin: 0; padding: 0; }
+.toc li { margin: 0 0 1px; }
+.toc a {
+  display: block; padding: 3px 9px; border-radius: var(--radius-ctl);
+  color: var(--fg-muted); text-decoration: none;
+  border-left: 2px solid transparent;
+}
+.toc a:hover { color: var(--fg); background: var(--bg-hover); }
+.toc .sub a { padding-left: 1.6rem; font-size: 12.5px; }
+
+main { min-width: 0; max-width: 72ch; }
+section { scroll-margin-top: 1.5rem; }
+h2 {
+  font-size: 1.22rem; letter-spacing: -0.01em; font-weight: 600;
+  margin: 2.6rem 0 0.7rem; padding-bottom: 0.35rem;
+  border-bottom: 1px solid var(--border);
+}
+h3 {
+  font-size: 1rem; font-weight: 600; margin: 1.9rem 0 0.45rem;
+}
+h4 {
+  font-size: 12px; letter-spacing: 0.07em; text-transform: uppercase;
+  color: var(--fg-muted); margin: 1.4rem 0 0.35rem; font-weight: 600;
+}
+p { margin: 0 0 0.85rem; }
+ul, ol { padding-left: 1.25rem; margin: 0 0 0.9rem; }
+li { margin: 0.2rem 0; }
+strong { font-weight: 600; }
+
+p code, li code, td code, h3 code {
+  font-size: 0.88em;
+  background: var(--bg-sunken);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-chip);
+  padding: 0.05em 0.35em;
+  color: var(--accent-ink2);
+}
+a code { color: inherit; }
+
+/* -------------------------------------------------------------- tables */
+.table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  margin: 0 0 1.2rem;
+  background: var(--bg-raised);
+}
+table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+th, td {
+  text-align: left;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+th {
+  background: var(--bg-sunken);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--fg-muted);
+  white-space: nowrap;
+}
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover { background: var(--bg-hover); }
+td code { white-space: nowrap; }
+
+/* the method chip: the one mark this page uses */
+.m {
+  font-family: var(--mono); font-size: 11px; font-weight: 500;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--border-str); border-radius: var(--radius-chip);
+  padding: 1px 6px; background: var(--bg-sunken); color: var(--fg-muted);
+  white-space: nowrap;
+}
+.m.write { color: var(--accent-ink2); border-color: var(--accent); background: var(--accent-dim); }
+.path { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+
+/* ---------------------------------------------------------- code blocks */
+.code {
+  margin: 0 0 1.2rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-panel);
+  background: var(--bg-sunken);
+  overflow: hidden;
+}
+.code-bar {
+  display: flex; align-items: center; gap: 0.8rem;
+  padding: 5px 8px 5px 12px;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-raised);
+}
+.code-lang {
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.05em;
+  text-transform: uppercase; color: var(--fg-muted);
+}
+.copy {
+  margin-left: auto;
+  font: inherit; font-size: 12px;
+  color: var(--fg-muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-ctl);
+  padding: 2px 9px;
+  cursor: pointer;
+  transition: color 80ms ease, border-color 80ms ease;
+}
+.copy:hover { color: var(--fg); border-color: var(--border-str); }
+.copy.done { color: var(--ok); border-color: var(--ok-border); }
+pre {
+  margin: 0;
+  padding: 12px 14px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--fg);
+  tab-size: 2;
+}
+pre code { background: none; border: 0; padding: 0; font-size: inherit; color: inherit; }
+
+/* --------------------------------------------------------------- notes */
+.note {
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-str);
+  border-radius: var(--radius-ctl);
+  background: var(--bg-raised);
+  padding: 0.75rem 1rem;
+  margin: 0 0 1.2rem;
+}
+.note p:last-child { margin-bottom: 0; }
+.note .label {
+  display: block;
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--fg-muted); font-weight: 600; margin-bottom: 0.3rem;
+}
+.note.warn { border-left-color: var(--warn); }
+.note.warn .label { color: var(--warn); }
+
+/* the fact strip: real numbers, set as a list, not as tiles */
+/* Two columns, so four facts fill two even rows. A strip that leaves one
+   item alone on its own row reads as a gap in the page. */
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 2.2rem;
+  border-top: 1px solid var(--border);
+  margin: 0 0 1.6rem;
+}
+.facts div {
+  padding: 0.85rem 0;
+  border-bottom: 1px solid var(--border);
+  min-width: 0;
+}
+.facts dt {
+  font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--fg-muted); margin: 0 0 0.25rem;
+}
+.facts dd {
+  margin: 0; font-size: 1.02rem; font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.facts dd span { font-weight: 400; color: var(--fg-muted); font-size: 0.86rem; }
+
+/* --------------------------------------------------------------- footer */
+footer {
+  margin-top: 3rem;
+  padding-top: 1.2rem;
+  border-top: 1px solid var(--border);
+  color: var(--fg-muted);
+  font-size: 13px;
+}
+footer p { margin: 0 0 0.5rem; max-width: 72ch; }
+
+@media (max-width: 60rem) {
+  .doc { grid-template-columns: minmax(0, 1fr); }
+  .toc {
+    position: static;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-panel);
+    background: var(--bg-raised);
+    padding: 0.9rem 1rem;
+  }
+  .toc ol { columns: 2; column-gap: 1rem; }
+  .toc .sub { display: none; }
+  .facts { grid-template-columns: minmax(0, 1fr); gap: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+</style>
+
+<div class="masthead">
+  <div class="wrap">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true">ACI</span>
+      <span class="brand-text">Postilion Operator Console</span>
+    </div>
+    <h1>API reference and integration guide</h1>
+    <p class="standfirst">
+      How to read and change an ACI Postilion platform's configuration over
+      HTTP, and how a service of your own should call it.
+    </p>
+    <ul class="linkrow">
+      <li><a href="https://postilion.novustech.dev/api-docs" target="_blank" rel="noopener">postilion.novustech.dev/api-docs</a></li>
+      <li><a href="https://postilion.novustech.dev/api-docs.md" target="_blank" rel="noopener">/api-docs.md</a></li>
+      <li><a href="https://postilion.novustech.dev/openapi.json" target="_blank" rel="noopener">/openapi.json</a></li>
+      <li><a href="https://postilion.novustech.dev" target="_blank" rel="noopener">the console</a></li>
+    </ul>
+    <p class="vpn-note">
+      The name is VPN-only. The public edge refuses it and the public resolver
+      does not answer it, so the API is reachable from inside the VPN only.
+      This page is the same reference, readable anywhere.
+    </p>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="doc">
+    <nav class="toc" aria-label="Contents">
+      <h2>Contents</h2>
+      <ol>
+        <li><a href="#what">What this API is</a></li>
+        <li><a href="#auth">Authentication</a></li>
+        <li><a href="#endpoints">Endpoints</a></li>
+        <li><a href="#detail">In detail</a></li>
+        <li><a href="#services">From another service</a></li>
+        <li><a href="#byhand">By hand</a></li>
+        <li><a href="#ops">Operations</a></li>
+      </ol>
+    </nav>
+
+    <main>
+      <section id="what">
+        <h2>What this API is</h2>
+        <p>
+          It runs <strong>the shipped statements of a named console
+          screen</strong>. A caller names a console, a screen, a statement
+          index and the bind values; the console looks the statement up in
+          the catalogue decoded from the vendor's own console forms and runs
+          it with those values bound as parameters.
+        </p>
+        <p>
+          It is <strong>not</strong> a general SQL endpoint. No parameter
+          carries SQL, and the binds go to the driver as query parameters,
+          so a caller cannot inject a statement. A caller can only run what
+          the vendor shipped, and only on the screen the vendor shipped it
+          for.
+        </p>
+        <p>
+          A service that needs arbitrary SQL, or the configuration at scale,
+          should read the platform's database directly with its own
+          least-privilege login. This API is the operator surface.
+        </p>
+        <dl class="facts">
+          <div>
+            <dt>Endpoints</dt>
+            <dd>17 <span>paths under /api</span></dd>
+          </div>
+          <div>
+            <dt>Sign-in methods</dt>
+            <dd>2 <span>database login, Keycloak</span></dd>
+          </div>
+          <div>
+            <dt>Session</dt>
+            <dd>8 h <span>of inactivity, in pod memory</span></dd>
+          </div>
+          <div>
+            <dt>Rights</dt>
+            <dd>from roles <span>read, or readwrite</span></dd>
+          </div>
+        </dl>
+      </section>
+
+      <section id="auth">
+        <h2>Authentication</h2>
+        <p>Two ways in.</p>
+
+        <h3>Database login: the machine-friendly one</h3>
+        <p>
+          The shipped consoles' own sign-in is a database login, so this API
+          checks the operator's credentials against the platform's database.
+          It is the method a service should use.
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">bash</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>curl -s -c cookies.txt -X POST https://postilion.novustech.dev/api/login \
+  -H 'Content-Type: application/json' \
+  -d '{"operator_id":"uopviewer","password":"&lt;password&gt;"}'</code></pre>
+        </div>
+        <p>
+          The answer sets a session cookie, <code>postilion_console</code>.
+          Send it on every later call:
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">http</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>Cookie: postilion_console=&lt;value&gt;</code></pre>
+        </div>
+
+        <h3>Keycloak SSO: for people</h3>
+        <p>
+          The browser redirect flow at <code>/api/auth/login</code>, with the
+          callback at <code>/api/auth/callback</code>. It exists so an
+          operator does not need a second password. It is a browser flow: it
+          needs a human at the keyboard, so <strong>a service must not use
+          it</strong>.
+        </p>
+
+        <h3>Sessions</h3>
+        <ul>
+          <li>
+            A session lives in the console pod's memory, for
+            <strong>8 hours</strong> of inactivity.
+          </li>
+          <li>
+            A pod restart (a rollout, a node drain, an eviction)
+            <strong>drops every session</strong>. A service must treat
+            <code>401</code> as "sign in again", not as "the request was
+            wrong".
+          </li>
+          <li>The console runs one replica, so there is one session store.</li>
+        </ul>
+
+        <h3>Rights</h3>
+        <p>
+          Rights are read from the database, from the roles the principal
+          holds:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>Role held by the login</th><th>Rights</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><code>db_owner</code>, <code>db_datawriter</code>, <code>postapp</code>, <code>postcfg</code></td>
+                <td><code>readwrite</code></td>
+              </tr>
+              <tr>
+                <td><code>db_datareader</code>, <code>postmon</code>, <code>postaud</code></td>
+                <td><code>read</code></td>
+              </tr>
+              <tr><td>anything else</td><td><code>read</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          A read-only principal is refused by the write endpoint with
+          <code>403</code>, and the console says so in the operator badge.
+          The platform's own service logins (<code>upostapp</code>,
+          <code>upostmon</code>, <code>upostcfg</code>,
+          <code>upostaud</code>) are not for services: they belong to the
+          platform's services.
+        </p>
+      </section>
+
+      <section id="endpoints">
+        <h2>Endpoints</h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Method</th><th>Path</th><th>Auth</th><th>What it does</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/healthz</td><td>none</td><td>Liveness. Never touches the database.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/health</td><td>none</td><td>Readiness. Counts the platform's tables.</td></tr>
+              <tr><td><span class="m">POST</span></td><td class="path">/api/login</td><td>none</td><td>Sign in with a database login. Sets the session cookie.</td></tr>
+              <tr><td><span class="m">POST</span></td><td class="path">/api/logout</td><td>session</td><td>Ends the session and clears the cookie.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/whoami</td><td>none</td><td>The signed-in operator, or <code>{"operator": null}</code>. Never 401.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/consoles</td><td>none</td><td>The console tree, with counts.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/console/{console}</td><td>none</td><td>One console with its screens and statements.</td></tr>
+              <tr><td><span class="m">POST</span></td><td class="path">/api/query</td><td>session</td><td>Run one of a screen's read statements.</td></tr>
+              <tr><td><span class="m">POST</span></td><td class="path">/api/write</td><td>session, read/write</td><td>Run one of a screen's write statements, with confirmation.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/audit</td><td>session</td><td>The audit trail, newest first.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/lookups</td><td>none</td><td>The catalogue's lookup lists.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/auth/methods</td><td>none</td><td>Which sign-in methods this console offers.</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/auth/login</td><td>none</td><td>Starts the Keycloak round trip (browser only).</td></tr>
+              <tr><td><span class="m">GET</span></td><td class="path">/api/auth/callback</td><td>none</td><td>Finishes it and opens the session.</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <h3>Errors</h3>
+        <p>
+          Every failure is the same shape: <code>{"detail": "..."}</code>, or
+          <code>{"detail": {...}}</code> for the write confirmation. A
+          <code>404</code> names the missing object, a <code>400</code>
+          names the reason the statement was refused, and a
+          <code>409</code> is the write asking for confirmation.
+        </p>
+      </section>
+
+      <section id="detail">
+        <h2>In detail</h2>
+
+        <h3><code>GET /api/consoles</code></h3>
+        <p>
+          The console tree. The shipped menu path is the tree, because that
+          is how an operator knows the platform.
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"consoles": [
+  {"name": "Config - Cards", "menu_path": "Config - Cards",
+   "group": "Config", "component": "TConfigCards",
+   "purpose": "...", "screen_count": 32, "statement_count": 63}
+]}</code></pre>
+        </div>
+
+        <h3><code>GET /api/console/{console}</code></h3>
+        <p>
+          One console, its screens, and every statement on each screen with
+          the statement's index, kind, verb and bind names.
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"console": {"name": "...", "menu_path": "...", "group": "...",
+              "purpose": "...", "component": "..."},
+ "screens": [
+   {"form": "TConfigCards", "caption": "...", "grids": [...], "values": [...],
+    "binds": [...], "buttons": [...],
+    "statements": [{"index": 0, "kind": "read", "verb": "select",
+                    "sql": "SELECT ... :NAME ...", "binds": ["NAME"],
+                    "tables": ["..."]}]}
+ ]}</code></pre>
+        </div>
+        <p>
+          The <code>index</code> of a statement is what
+          <code>/api/query</code> and <code>/api/write</code> take.
+          Indices are the statement's position within its screen: the reads
+          first, in shipped order, then the writes.
+        </p>
+
+        <h3><code>POST /api/query</code></h3>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"console": "Config - Cards", "screen": "TConfigCards", "statement": 0,
+ "params": {"NAME": "value"}, "limit": 500, "offset": 0}</code></pre>
+        </div>
+        <p>
+          <code>params</code> supplies the statement's binds, by name. A bind
+          with no value is an error
+          (<code>400 missing value for :NAME</code>): the console never
+          guesses a NULL.
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"rows": [{"COLUMN": "value"}], "returned": 12, "total": 12,
+ "columns": ["COLUMN"], "sql": "SELECT ..."}</code></pre>
+        </div>
+        <p>
+          <code>limit</code> and <code>offset</code> page the rows.
+          <code>total</code> is the number of rows the statement returned,
+          before paging.
+        </p>
+
+        <h3><code>POST /api/write</code></h3>
+        <p>
+          The same shape, plus the confirmation:
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"console": "...", "screen": "...", "statement": 12,
+ "params": {"NAME": "value"}, "confirm": false, "target": "optional note"}</code></pre>
+        </div>
+        <p>
+          Without <code>confirm</code>, the write is refused with
+          <code>409</code> and the console says what it would have done:
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"detail": {"message": "confirmation required", "action": "UPDATE",
+            "statement": "UPDATE ...", "target": "NAME"}}</code></pre>
+        </div>
+        <p>
+          The caller then repeats the request with
+          <code>"confirm": true</code>. The answer:
+        </p>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"ok": true, "action": "UPDATE", "rows_affected": 1}</code></pre>
+        </div>
+        <p>
+          Every write is journalled in the platform's
+          <code>console_audit_log</code> with the operator, the console, the
+          screen, the action, the target and the number of rows.
+          <code>GET /api/audit?limit=100</code> reads it back.
+        </p>
+
+        <h3><code>GET /api/audit</code></h3>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">json</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>{"audit": [{"audit_id": 12, "audit_time": "2026-11-16 09:12:44.000",
+            "operator_id": "uopadmin", "operator_name": "uopadmin",
+            "console_name": "...", "screen_name": "...",
+            "action_name": "UPDATE", "target_key": "...", "rows_affected": 1}]}</code></pre>
+        </div>
+      </section>
+
+      <section id="services">
+        <h2>From another service</h2>
+
+        <h3>Give the service its own principal</h3>
+        <p>
+          One login per service, named for the service, with the least
+          privilege it needs. A service that only reads gets a
+          <code>db_datareader</code> member; a service that must change
+          configuration gets a <code>postapp</code> member. Do not hand a
+          service a human's credentials, and do not use the platform's own
+          <code>upostapp</code> login, which the platform's services also
+          use.
+        </p>
+
+        <h3>Keep the session, and sign in again when it ends</h3>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">python</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>import json, urllib.error, urllib.parse, urllib.request, http.cookiejar
+
+BASE = "https://postilion.novustech.dev"
+
+class Console:
+    """A session against the Postilion operator console."""
+
+    def __init__(self, base=BASE, operator=None, password=None):
+        self.base = base
+        self.operator = operator
+        self.password = password
+        self.jar = http.cookiejar.CookieJar()
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.jar))
+
+    def login(self):
+        body = json.dumps({"operator_id": self.operator,
+                            "password": self.password}).encode()
+        req = urllib.request.Request(
+            self.base + "/api/login", data=body, method="POST")
+        req.add_header("Content-Type", "application/json")
+        with self.opener.open(req, timeout=30) as r:
+            return json.loads(r.read().decode())
+
+    def call(self, path, payload=None, method=None):
+        """One API call, signing in again once if the session has expired."""
+        data = json.dumps(payload).encode() if payload is not None else None
+        req = urllib.request.Request(
+            self.base + path, data=data,
+            method=method or ("POST" if data else "GET"))
+        if data:
+            req.add_header("Content-Type", "application/json")
+        try:
+            with self.opener.open(req, timeout=60) as r:
+                return json.loads(r.read().decode())
+        except urllib.error.HTTPError as e:
+            if e.code == 401:
+                # The pod was replaced and the session went with it.
+                self.login()
+                return self.call(path, payload, method)
+            raise
+
+    def query(self, console, screen, statement, **params):
+        return self.call("/api/query", {"console": console, "screen": screen,
+                                         "statement": statement, "params": params})
+
+    def write(self, console, screen, statement, params, target=""):
+        """A write, in two steps: ask, then confirm."""
+        body = {"console": console, "screen": screen, "statement": statement,
+                "params": params, "target": target}
+        try:
+            return self.call("/api/write", body)
+        except urllib.error.HTTPError as e:
+            if e.code != 409:
+                raise
+            detail = json.loads(e.read().decode()).get("detail", {})
+            # A service may confirm automatically once it has decided what it
+            # is changing. A human should read the target first.
+            body["confirm"] = True
+            return self.call("/api/write", body)</code></pre>
+        </div>
+
+        <h3>What to point a service at</h3>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr><th>The service needs</th><th>Use</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>One configuration value</td>
+                <td><code>GET /api/console/{console}</code>, then <code>POST /api/query</code> with the statement's binds</td>
+              </tr>
+              <tr>
+                <td>A list of records</td>
+                <td><code>POST /api/query</code>, paging with <code>limit</code> and <code>offset</code></td>
+              </tr>
+              <tr>
+                <td>To change configuration</td>
+                <td><code>POST /api/write</code>, confirm after reading the 409</td>
+              </tr>
+              <tr>
+                <td>To know who changed what</td>
+                <td><code>GET /api/audit</code></td>
+              </tr>
+              <tr>
+                <td>Its own health</td>
+                <td><code>GET /api/healthz</code> (never touches the database)</td>
+              </tr>
+              <tr>
+                <td>To be ready</td>
+                <td><code>GET /api/health</code> (counts the platform's tables)</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>Notes for a service author</h3>
+        <ul>
+          <li>
+            <strong>Statement indices are per screen.</strong> Discover them
+            from <code>GET /api/console/{console}</code> rather than
+            hard-coding them; a console's screens and statements come from
+            the vendor's own form streams.
+          </li>
+          <li>
+            <strong>The catalogue is the vendor's.</strong> Screen and
+            console names are the shipped names, and the API answers
+            <code>404</code> for a name the vendor does not ship.
+          </li>
+          <li>
+            <strong>A write is journalled.</strong> The audit row names the
+            operator, so a service should use its own principal: the trail
+            then says which service changed what.
+          </li>
+          <li>
+            <strong>Do not cache a session across a restart.</strong>
+            <code>401</code> is cheap to recover from and is the only
+            signal that the pod changed.
+          </li>
+          <li>
+            <strong>There is no rate limit and no API key.</strong> The
+            console sits behind the VPN and its audience is a handful of
+            operators and a few services.
+          </li>
+          <li>
+            <strong>The API speaks JSON only.</strong> No CSV, no XML.
+          </li>
+        </ul>
+      </section>
+
+      <section id="byhand">
+        <h2>By hand</h2>
+        <div class="code">
+          <div class="code-bar">
+            <span class="code-lang">bash</span>
+            <button class="copy" type="button">Copy</button>
+          </div>
+          <pre><code>BASE=https://postilion.novustech.dev
+
+# sign in and keep the cookie
+curl -s -c jar.txt -X POST $BASE/api/login \
+  -H 'Content-Type: application/json' \
+  -d '{"operator_id":"uopviewer","password":"&lt;password&gt;"}'
+
+# what can I call
+curl -s -b jar.txt $BASE/api/consoles | head -c 400
+
+# the statements of one console
+curl -s -b jar.txt "$BASE/api/console/Config%20-%20Cards" | head -c 400
+
+# run its first read
+curl -s -b jar.txt -X POST $BASE/api/query \
+  -H 'Content-Type: application/json' \
+  -d '{"console":"Config - Cards","screen":"TConfigCards","statement":0,
+       "params":{}}' | head -c 400
+
+# who changed what
+curl -s -b jar.txt "$BASE/api/audit?limit=5"</code></pre>
+        </div>
+        <div class="note">
+          <span class="label">Credentials</span>
+          <p>
+            The operator passwords are not published here. They live in the
+            deployment's own secret store, in
+            <code>secrets/kdev.env</code> on the deployment host and in the
+            operator's <code>.env</code> on the platform's guest. Ask the
+            platform owner for the service principal your service should
+            use, rather than reusing an operator's.
+          </p>
+        </div>
+      </section>
+
+      <section id="ops">
+        <h2>Operations</h2>
+        <ul>
+          <li>
+            <strong>Probes.</strong> <code>/api/healthz</code> for liveness
+            and <code>/api/health</code> for readiness. The readiness check
+            runs a query, so it is allowed 35 seconds.
+          </li>
+          <li>
+            <strong>The audit table</strong> is <code>console_audit_log</code>
+            in the platform's <code>realtime</code> database, and the console
+            creates it if it is missing.
+          </li>
+          <li>
+            <strong>The API version</strong> is the console's: the catalogue
+            is regenerated from the shipped console forms, so a screen's
+            statement indices move if the vendor's forms move.
+          </li>
+          <li>
+            <strong>Sign-ins are logged.</strong> Every SSO sign-in records
+            the account, the rights granted and the roles the identity token
+            carried.
+          </li>
+        </ul>
+      </section>
+
+      <footer>
+        <p>
+          The canonical reference is the live console's own
+          <a href="https://postilion.novustech.dev/api-docs" target="_blank" rel="noopener">/api-docs</a>
+          page, which is rendered from
+          <code>console/API.md</code> in the ACI Postilion repository. This
+          page is the standalone rendering of that same file.
+        </p>
+        <p>
+          ACI Postilion Realtime is the vendor's shipped product: the
+          screens, grids and statements behind this API were decoded from
+          the shipped desktop consoles' own form streams.
+        </p>
+      </footer>
+    </main>
+  </div>
+</div>
+
+<script>
+/* Copy buttons. The clipboard is refused by some viewers and some app
+   views, so a refusal falls back to selecting the text, which always works. */
+document.querySelectorAll('.code').forEach(function (block) {
+  var btn = block.querySelector('.copy');
+  var pre = block.querySelector('pre');
+  if (!btn || !pre) return;
+  btn.addEventListener('click', function () {
+    var text = pre.innerText;
+    var done = function (ok) {
+      btn.textContent = ok ? 'Copied' : 'Select and copy';
+      btn.classList.toggle('done', ok);
+      window.setTimeout(function () {
+        btn.textContent = 'Copy';
+        btn.classList.remove('done');
+      }, 2000);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(function () { done(true); },
+                                            function () { select(); done(false); });
+    } else {
+      select(); done(false);
+    }
+    function select() {
+      var range = document.createRange();
+      range.selectNodeContents(pre);
+      var sel = window.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(range);
+    }
+  });
+});
+</script>
