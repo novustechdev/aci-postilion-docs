@@ -445,6 +445,7 @@ footer p { margin: 0 0 0.5rem; max-width: 72ch; }
         <li><a href="#auth">Authentication</a></li>
         <li><a href="#endpoints">Endpoints</a></li>
         <li><a href="#detail">In detail</a></li>
+        <li><a href="#iso8583">ISO 8583</a></li>
         <li><a href="#services">From another service</a></li>
         <li><a href="#byhand">By hand</a></li>
         <li><a href="#ops">Operations</a></li>
@@ -605,6 +606,7 @@ footer p { margin: 0 0 0.5rem; max-width: 72ch; }
               <tr><td><span class="m">GET</span></td><td class="path">/api/auth/methods</td><td>none</td><td>Which sign-in methods this console offers.</td></tr>
               <tr><td><span class="m">GET</span></td><td class="path">/api/auth/login</td><td>none</td><td>Starts the Keycloak round trip (browser only).</td></tr>
               <tr><td><span class="m">GET</span></td><td class="path">/api/auth/callback</td><td>none</td><td>Finishes it and opens the session.</td></tr>
+              <tr><td><span class="m">TCP</span></td><td class="path">10.10.30.209:18585</td><td>none</td><td>ISO 8583, the platform's other surface. Not HTTP. <a href="#iso8583">Below</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -939,6 +941,147 @@ curl -s -b jar.txt "$BASE/api/audit?limit=5"</code></pre>
             platform owner for the service principal your service should
             use, rather than reusing an operator's.
           </p>
+        </div>
+      </section>
+
+      <section id="iso8583">
+        <h2>ISO 8583</h2>
+        <p>
+          The API above is HTTP over the platform's database. The platform's
+          other surface is <strong>ISO 8583</strong>, and it is not HTTP: it
+          is a binary TCP protocol that terminals, acquirers and scheme nodes
+          speak. It is a different thing with a different shape, and this
+          section is its contract.
+        </p>
+
+        <h3>Where it runs</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>What</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Endpoint</td><td><code>postilion-iso</code> in the <code>postilion</code> namespace, a LoadBalancer on the Contabo segment. <strong>VPN only</strong>: the public edge does not serve it.</td></tr>
+              <tr><td>Address</td><td><code>10.10.30.209</code>, port <code>18585</code>, the cluster's ISO 8583 port</td></tr>
+              <tr><td>Server</td><td>the shipped <code>Sink</code> injector: the vendor's own counterparty responder, on the platform's own codec and framing</td></tr>
+              <tr><td>Framing</td><td>the platform's Postilion header filter, on both ends</td></tr>
+              <tr><td>Messages</td><td>the platform's own <code>Iso8583Post</code> codec</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h3>The framing</h3>
+        <p>A frame is a length prefix and then the message:</p>
+        <div class="code">
+          <div class="code-bar"><span class="code-lang">wire</span><button class="copy" type="button">Copy</button></div>
+          <pre><code>+---------------------------+--------------------------------------+
+| 2B BE len | or FF FF      | payload: the ISO 8583 message       |
+| (payload) | 4B BE len     |                                      |
++---------------------------+--------------------------------------+
+  normal        &gt;= 65535 bytes</code></pre>
+        </div>
+        <ul>
+          <li>Below 65535 bytes: a 2-byte big-endian length of the <strong>payload only</strong>.</li>
+          <li>At or above 65535 bytes: <code>FF FF</code> then a 4-byte big-endian length.</li>
+          <li>Nothing else travels in the header: no tracer, no node name, no sequence number. A counterparty whose specification expects a tracer will not find one.</li>
+        </ul>
+
+        <h3>The message</h3>
+        <ul>
+          <li>The <strong>MTI</strong> is four ASCII hex characters: <code>"0110"</code>, not a decimal number.</li>
+          <li>The <strong>primary bitmap</strong> is 8 bytes, big-endian, bit 1 = field 1.</li>
+          <li><strong>Bit 1 of the primary bitmap</strong> means "a secondary bitmap follows", and the secondary bitmap is the next 8 bytes with bit 1 = field 65.</li>
+          <li>The <strong>fields</strong> follow in ascending order.</li>
+          <li>A <strong>variable-length</strong> field carries its length as ASCII decimal digits before the value (<code>"16"</code> then 16 characters); a fixed field does not.</li>
+          <li>Field <strong>127</strong> is the platform's private sub-bitmap.</li>
+        </ul>
+
+        <h3>What the endpoint answers</h3>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>You send</th><th>It answers</th><th>With</th></tr></thead>
+            <tbody>
+              <tr><td><code>0800</code> sign-on</td><td><code>0810</code></td><td>DE70 = <code>001</code>, DE39 = <code>00</code>; the original <code>0800</code> is echoed back afterwards</td></tr>
+              <tr><td><code>0100</code> authorisation</td><td><code>0110</code></td><td>DE39 = <code>00</code></td></tr>
+              <tr><td><code>0200</code> transaction</td><td><code>0210</code></td><td>DE39 = <code>00</code></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>
+          DE70 = <code>301</code> on an <code>0800</code> is the echo test,
+          and it is answered with DE70 = <code>301</code> and no approval.
+        </p>
+
+        <h3>Trying it by hand</h3>
+        <p>
+          <code>tools/iso/iso_client.py</code> is a plain client with
+          <strong>no Postilion code in it</strong>: it speaks the framing and
+          the message layout directly over a socket. That is deliberate,
+          because a client built from the platform's own classes would only
+          prove the platform agrees with itself. A successful exchange
+          through this client is evidence that a third party can talk to the
+          endpoint.
+        </p>
+        <p>
+          The frames it builds are checked against the platform's own
+          recorded frames, byte for byte
+          (<code>sim/harness/golden/iso.exchange.txt</code>), so the client
+          cannot drift from the wire format:
+        </p>
+        <div class="code">
+          <div class="code-bar"><span class="code-lang">bash</span><button class="copy" type="button">Copy</button></div>
+          <pre><code>python3 tools/iso/iso_client.py --self-check
+python3 tools/iso/iso_client.py 10.10.30.209 18585 --signon --auth</code></pre>
+        </div>
+        <p>Expected output:</p>
+        <div class="code">
+          <div class="code-bar"><span class="code-lang">text</span><button class="copy" type="button">Copy</button></div>
+          <pre><code>connected to 10.10.30.209:18585
+sign-on: sent 0800 -&gt; received 0810 (answer; fields 1,39)
+sign-on: sent 0800 -&gt; received 0800 (echo; fields 1)
+authorisation: sent 0100 -&gt; received 0110 (answer; fields 1,2,3,4,7,11,12,13,39,41,42,49)
+closed</code></pre>
+        </div>
+
+        <h3>What this endpoint is not</h3>
+        <p>
+          It is <strong>not</strong> the platform's Transaction Manager
+          listener, which is the switch's own transaction path. That one
+          takes a terminal's or a scheme node's traffic into the platform
+          proper, and it needs:
+        </p>
+        <ul>
+          <li>the link configuration as <strong>rows in the database</strong>, not as properties: <code>node_saps</code> (the endpoint: protocol, the <code>ip,port</code> address, the filter stack) and <code>node_conns</code>; the listener ports come from the node's interchange configuration;</li>
+          <li>the <strong>node</strong>, the source node and the sink node to exist as rows;</li>
+          <li>the <strong>Transaction Manager service to be running</strong>, which the deployment does not start today (only the Scheduler runs);</li>
+          <li>and, for a live node, the platform's <strong>licence</strong> to validate.</li>
+        </ul>
+        <p>
+          The console can write the configuration rows for you, because the
+          node and SAP screens are in its catalogue:
+          <code>c_RealtimeApplications</code> / <code>TSAPEDITDLG</code>
+          (<code>node_saps</code>) and <code>TEDITCONN</code>
+          (<code>node_conns</code>), and <code>m_Postilion</code> /
+          <code>TQRYSYSTEMOVERVIEW</code> to read them back. The address
+          format is <code>ip,port</code> <strong>with a comma</strong>, and a
+          missing comma makes the whole string the port.
+        </p>
+
+        <h3>Sign-on between a node and the Transaction Manager</h3>
+        <p>
+          When the platform's own node talks to the Transaction Manager, that
+          link is an ISO 8583 sign-on too, with its own rules:
+        </p>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Element</th><th>Value</th></tr></thead>
+            <tbody>
+              <tr><td>Request</td><td><code>0800</code> (MTI 2048), repeated as 2049</td></tr>
+              <tr><td>Response</td><td><code>0810</code> (MTI 2064)</td></tr>
+              <tr><td>Marker</td><td>DE70 = <code>302</code> on the request, <code>001</code> on the answer</td></tr>
+              <tr><td>Response code</td><td>DE39 = <code>00</code> when signed on, <code>91</code> otherwise</td></tr>
+              <tr><td>Key</td><td>private field 2: <code>&lt;serverID&gt;:0800:&lt;gmt&gt;:&lt;counter mod 10000&gt;</code></td></tr>
+              <tr><td>Mandatory on receipt</td><td>DE7, DE11, DE12, DE13, DE70, DE100 and private field 2</td></tr>
+            </tbody>
+          </table>
         </div>
       </section>
 
