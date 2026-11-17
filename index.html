@@ -606,7 +606,7 @@ footer p { margin: 0 0 0.5rem; max-width: 72ch; }
               <tr><td><span class="m">GET</span></td><td class="path">/api/auth/methods</td><td>none</td><td>Which sign-in methods this console offers.</td></tr>
               <tr><td><span class="m">GET</span></td><td class="path">/api/auth/login</td><td>none</td><td>Starts the Keycloak round trip (browser only).</td></tr>
               <tr><td><span class="m">GET</span></td><td class="path">/api/auth/callback</td><td>none</td><td>Finishes it and opens the session.</td></tr>
-              <tr><td><span class="m">TCP</span></td><td class="path">10.10.30.209:18585</td><td>none</td><td>ISO 8583, the platform's other surface. Not HTTP. <a href="#iso8583">Below</a>.</td></tr>
+              <tr><td><span class="m">TCP</span></td><td class="path">iso.postilion.novustech.dev:18585</td><td>none</td><td>ISO 8583, the platform's other surface. Not HTTP. <a href="#iso8583">Below</a>.</td></tr>
             </tbody>
           </table>
         </div>
@@ -959,7 +959,7 @@ curl -s -b jar.txt "$BASE/api/audit?limit=5"</code></pre>
           <table>
             <thead><tr><th>What</th><th>Value</th></tr></thead>
             <tbody>
-              <tr><td>Endpoint</td><td><code>postilion-iso</code> in the <code>postilion</code> namespace, a LoadBalancer on the Contabo segment. <strong>VPN only</strong>: the public edge does not serve it.</td></tr>
+              <tr><td>Endpoint</td><td><code>iso.postilion.novustech.dev</code>, which is <code>postilion-iso</code> in the <code>postilion</code> namespace, a LoadBalancer on the Contabo segment. <strong>VPN only</strong>: the public edge does not serve it, and the public resolver does not answer the name.</td></tr>
               <tr><td>Address</td><td><code>10.10.30.209</code>, port <code>18585</code>, the cluster's ISO 8583 port</td></tr>
               <tr><td>Server</td><td>the shipped <code>Sink</code> injector: the vendor's own counterparty responder, on the platform's own codec and framing</td></tr>
               <tr><td>Framing</td><td>the platform's Postilion header filter, on both ends</td></tr>
@@ -1029,12 +1029,12 @@ curl -s -b jar.txt "$BASE/api/audit?limit=5"</code></pre>
         <div class="code">
           <div class="code-bar"><span class="code-lang">bash</span><button class="copy" type="button">Copy</button></div>
           <pre><code>python3 tools/iso/iso_client.py --self-check
-python3 tools/iso/iso_client.py 10.10.30.209 18585 --signon --auth</code></pre>
+python3 tools/iso/iso_client.py iso.postilion.novustech.dev 18585 --signon --auth</code></pre>
         </div>
         <p>Expected output:</p>
         <div class="code">
           <div class="code-bar"><span class="code-lang">text</span><button class="copy" type="button">Copy</button></div>
-          <pre><code>connected to 10.10.30.209:18585
+          <pre><code>connected to iso.postilion.novustech.dev:18585
 sign-on: sent 0800 -&gt; received 0810 (answer; fields 1,39)
 sign-on: sent 0800 -&gt; received 0800 (echo; fields 1)
 authorisation: sent 0100 -&gt; received 0110 (answer; fields 1,2,3,4,7,11,12,13,39,41,42,49)
